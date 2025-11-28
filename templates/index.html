@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IFT599/IFT799: Recherche Web</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="icon" type="image/png" href="/static/udes.jpg">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <h1 class="text-center text-primary mb-4">Recherche web</h1>
+
+<form method="post" class="card p-4 shadow-sm">
+    <div class="mb-3">
+        <label class="form-label">Seeds (un par ligne)</label>
+        <textarea name="seeds" class="form-control" rows="6" required
+          placeholder="https://site1.com
+https://site2.com
+https://site3.com">{{ request.form.get('seeds', '') }}</textarea>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Critère</label><br>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="critere" value="PageRank"
+       {% if request.form.get('critere', 'PageRank') == 'PageRank' %}checked{% endif %}>
+            <label class="form-check-label">PageRank</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="critere" value="HITS-autorite"
+                   {% if request.form.get('critere') == 'HITS-autorite' %}checked{% endif %}>
+            <label class="form-check-label">HITS-autorité</label>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Requête</label>
+        <textarea name="query" class="form-control" rows="3" required
+          placeholder="Votre requête...">{{ request.form.get('query', '') }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100">Lancer l'analyse</button>
+</form>
+
+    {% if results %}
+    <div class="mt-5">
+        <h2 class="text-success">Résultats pour "{{ results.query }}"</h2>
+        {% for critere, valeurs in results.scores.items() %}
+        <h3 class="mt-4">{{ critere }}</h3>
+        {% if valeurs == "À implémenter" %}
+        <p class="text-muted">À implémenter par les étudiants.</p>
+        {% else %}
+        <table class="table table-striped table-hover">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>URL</th>
+                <th>Score</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for url, score in valeurs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><a href="{{ url }}" target="_blank">{{ url }}</a></td>
+                <td><span class="badge bg-info">{{ "%.5f"|format(score) }}</span></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>
