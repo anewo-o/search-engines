@@ -26,10 +26,14 @@ https://site3.com">{{ request.form.get('seeds', '') }}</textarea>
             <label class="form-check-label">PageRank</label>
         </div>
         <div class="form-check">
+            <input class="form-check-input" type="radio" name="critere" value="HITS-hub"
+                   {% if request.form.get('critere') == 'HITS-hub' %}checked{% endif %}>
+            <label class="form-check-label">HITS-hub</label>
+        </div>
+          <div class="form-check">
             <input class="form-check-input" type="radio" name="critere" value="HITS-autorite"
                    {% if request.form.get('critere') == 'HITS-autorite' %}checked{% endif %}>
             <label class="form-check-label">HITS-autorité</label>
-        </div>
     </div>
 
     <div class="mb-3">

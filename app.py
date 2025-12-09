@@ -12,13 +12,13 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Demo-Recherche-Web (PageRank + HITS); +ht
 REQUEST_TIMEOUT = 10
 SLEEP_BETWEEN_REQUESTS = .1
 MAX_SEEDS = 15
-MAX_PAGES = 30
+MAX_PAGES = 50
 MAX_OUTLINKS_PER_PAGE = 10
 CRAWL_DEPTH = 3
 K = 10
 
 
-def is_probable_html(resp: requests.Response) -> bool:
+def is_probable_html(resp: requests.Response)  -> bool:
     return "text/html" in resp.headers.get("Content-Type", "")
 
 
@@ -54,7 +54,7 @@ def fetch(url: str) -> str | None:
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=True)
         if resp.status_code == 200 and is_probable_html(resp):
-            return resp.text
+            return resp.url,resp.text
         return None
     except requests.RequestException:
         return None
@@ -71,23 +71,75 @@ def crawl_and_build_graph(seed_urls, max_pages=MAX_PAGES, max_depth=CRAWL_DEPTH)
             continue
         visited.add(url)
 
-        html = fetch(url)
+        fetch_result = fetch(url)
         time.sleep(SLEEP_BETWEEN_REQUESTS)
-        if html is None:
+        
+        if fetch_result is None:
             continue
+        
+        final_url, html_content = fetch_result
+        final_url_normalized = normalize_url(final_url)
 
-        outlinks = extract_links(url, html)[:MAX_OUTLINKS_PER_PAGE]
-        G.add_node(url, domain=domain(url))
+        url_to_add = final_url_normalized
+
+        G.add_node(url_to_add, domain=domain(url_to_add), html=html_content)
+
+        outlinks = extract_links(url, html_content)[:MAX_OUTLINKS_PER_PAGE]
         for l in outlinks:
             G.add_node(l, domain=domain(l))
-            G.add_edge(url, l)
+            G.add_edge(url_to_add, l)
             if l not in visited:
                 frontier.append((l, depth + 1))
     return G
 
 
+def filter_graph_by_query(G: nx.DiGraph, query: str) -> nx.DiGraph:
+    """
+    Crée un sous-graphe (G_prime) contenant uniquement les nœuds dont le contenu
+    HTML contient les mots-clés de la requête (query).
+    
+    Args:
+        G (nx.DiGraph): Le graphe complet construit par le crawler.
+        query (str): La requête de recherche de l'utilisateur.
+        
+    Returns:
+        nx.DiGraph: Le sous-graphe contenant uniquement les nœuds pertinents.
+    """
+    query_lower = query.strip().lower()
+    if not query_lower:
+        return G
+    
+    # Séparer les mots de la requête
+    query_terms = query_lower.split()  
+    
+    relevant_nodes = set()
+    
+    for node_url in G.nodes:
+        if 'html' in G.nodes[node_url] and G.nodes[node_url]['html'] is not None:
+            html_content = G.nodes[node_url]['html'].lower()
+            
+            # Vérifie si TOUS les mots sont présents (peu importe l'ordre ou la distance)
+            if all(term in html_content for term in query_terms):
+                relevant_nodes.add(node_url)
+
+    G_prime = G.subgraph(relevant_nodes).copy()
+    
+    if not G_prime.nodes:
+         return nx.DiGraph()
+         
+    return G_prime
+
+
 def compute_pagerank(G: nx.DiGraph, damping: float = 0.85):
     return nx.pagerank(G, alpha=damping)
+
+def compute_hits(G: nx.DiGraph):
+    """
+    Calcule les scores de Hub et d'Autorité pour chaque nœud du graphe G.
+    """
+    # La fonction hits de NetworkX retourne deux dictionnaires : hubs et authorities.
+    hubs, authorities = nx.hits(G)
+    return authorities, hubs # Retourne (Autorité, Hub)
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -105,12 +157,34 @@ def index():
         seeds = [s.strip() for s in seeds_raw.splitlines() if s.strip()]
         query = request.form.get("query", "")
         scores = {}
+        G = crawl_and_build_graph(seeds)
         if critere == "PageRank":
-            G = crawl_and_build_graph(seeds)
-            pr = compute_pagerank(G)
+            G_prime = filter_graph_by_query(G, query)
+
+            if not G_prime.nodes:
+                error_message = f"Aucun résultat trouvé pour la requête : '{query}' dans les pages explorées."
+                return render_template("index.html",error_message)
+            
+            pr = compute_pagerank(G_prime)
             scores["PageRank"] = sorted(pr.items(), key=lambda x: x[1], reverse=True)[:K]
-        elif critere == "HITS-autorite":
-            scores["HITS-autorite"] = "À implémenter"
+        else: # HITS-autorite ou HITS-hub
+            # Étape cruciale : Filtrage du graphe basé sur la requête
+            # Ceci crée G_prime, le sous-graphe thématique
+            G_prime = filter_graph_by_query(G, query)
+            
+            if not G_prime.nodes:
+                error_message = f"Aucun résultat trouvé pour la requête : '{query}' dans les pages explorées."
+                return render_template("index.html",error_message)
+                
+            # Les calculs HITS sont maintenant effectués sur le sous-graphe G_prime
+            authorities, hubs = compute_hits(G) 
+
+            if critere == "HITS-autorite":
+                scores["HITS-autorite"] = sorted(authorities.items(), key=lambda x: x[1], reverse=True)[:K]
+                
+            elif critere == "HITS-hub":
+                scores["HITS-hub"] = sorted(hubs.items(), key=lambda x: x[1], reverse=True)[:K]
+        
         results = {"query": query, "scores": scores}
 
     return render_template("index.html", results=results)
