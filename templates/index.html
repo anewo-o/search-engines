@@ -25,11 +25,11 @@ https://site3.com">{{ request.form.get('seeds', '') }}</textarea>
        {% if request.form.get('critere', 'PageRank') == 'PageRank' %}checked{% endif %}>
             <label class="form-check-label">PageRank</label>
         </div>
-        <div class="form-check">
+        <!-- <div class="form-check">
             <input class="form-check-input" type="radio" name="critere" value="HITS-hub"
                    {% if request.form.get('critere') == 'HITS-hub' %}checked{% endif %}>
             <label class="form-check-label">HITS-hub</label>
-        </div>
+        </div> -->
           <div class="form-check">
             <input class="form-check-input" type="radio" name="critere" value="HITS-autorite"
                    {% if request.form.get('critere') == 'HITS-autorite' %}checked{% endif %}>
@@ -48,6 +48,10 @@ https://site3.com">{{ request.form.get('seeds', '') }}</textarea>
     {% if results %}
     <div class="mt-5">
         <h2 class="text-success">Résultats pour "{{ results.query }}"</h2>
+        <div class="mb-2 text-muted">
+            <small>Crawl: {{ "%.3f"|format(results.crawl_time) }} s —
+                   Calcul: {{ "%.3f"|format(results.rank_time) }} s</small>
+        </div>
         {% for critere, valeurs in results.scores.items() %}
         <h3 class="mt-4">{{ critere }}</h3>
         {% if valeurs == "À implémenter" %}
