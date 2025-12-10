@@ -14,7 +14,7 @@ REQUEST_TIMEOUT = 10
 SLEEP_BETWEEN_REQUESTS = .1
 MAX_SEEDS = 15
 MAX_PAGES = 50
-MAX_OUTLINKS_PER_PAGE = 10
+MAX_OUTLINKS_PER_PAGE = 15
 CRAWL_DEPTH = 3
 K = 10
 
@@ -68,8 +68,17 @@ def crawl_and_build_graph(query, seed_urls, max_pages=MAX_PAGES, max_depth=CRAWL
     query_terms = [t.lower() for t in query.split() if t.strip()]
 
     def is_relevant(html: str) -> bool:
-        text = html.lower()
-        return  (term in text for term in query_terms) if query_terms else True
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        text = soup.get_text(separator=' ', strip=True).lower()
+        
+        return any(term in text for term in query_terms) if query_terms else True
+
+    pages_added = 0
+    pages_rejected = 0
 
     while frontier and len(visited) < max_pages:
         url, depth = frontier.pop(0)
@@ -86,21 +95,31 @@ def crawl_and_build_graph(query, seed_urls, max_pages=MAX_PAGES, max_depth=CRAWL
         final_url, html_content = fetch_result
         final_url_normalized = normalize_url(final_url)
 
-        if not is_relevant(html_content):
+        # Vérifier la pertinence SEULEMENT si depth > 0 (pas pour les seeds)
+        if depth > 0 and not is_relevant(html_content):
+            pages_rejected += 1
             continue
 
+        # La page est pertinente OU c'est un seed (depth=0)
+        pages_added += 1
         url_to_add = final_url_normalized
 
         G.add_node(url_to_add, domain=domain(url_to_add), html=html_content)
 
-        outlinks = extract_links(url, html_content)[:MAX_OUTLINKS_PER_PAGE]
+        # Extraire les liens directement sans filtrage
+        all_outlinks = extract_links(url, html_content)
+        outlinks = all_outlinks[:MAX_OUTLINKS_PER_PAGE]
+
+        print(f"[{pages_added}/{max_pages}] Depth={depth} | {len(all_outlinks)} liens trouvés, {len(outlinks)} gardés | {url[:70]}")
+        
         for l in outlinks:
             G.add_node(l, domain=domain(l))
             G.add_edge(url_to_add, l)
             if l not in visited:
                 frontier.append((l, depth + 1))
+    
     return G
-
+  
 
 def compute_pagerank(G: nx.DiGraph, damping: float = 0.85):
     return nx.pagerank(G, alpha=damping)
@@ -129,14 +148,18 @@ def index():
         G = crawl_and_build_graph(query, seeds)
         crawl_time = perf_counter() - crawl_t0
 
+        rank_time = 0.0
+
         if critere == "PageRank":
             t0 = perf_counter()
             pr = compute_pagerank(G)
             rank_time = perf_counter() - t0
             scores["PageRank"] = sorted(pr.items(), key=lambda x: x[1], reverse=True)[:K]
 
-        elif critere == "HITS-authorite":
-            authorities, hubs = compute_hits(G) 
+        elif critere == "HITS-autorite":
+            t0 = perf_counter()
+            authorities, hubs = compute_hits(G)
+            rank_time = perf_counter() - t0 
             scores["HITS-autorite"] = sorted(authorities.items(), key=lambda x: x[1], reverse=True)[:K]
             
         results = {"query": query, "scores": scores, "crawl_time": crawl_time, "rank_time": rank_time}
